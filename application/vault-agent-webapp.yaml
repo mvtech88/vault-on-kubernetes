@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-agent-web
+  namespace: default
+  labels:
+    app: vault-agent-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault-agent-web
+  template:
+    metadata:
+      labels:
+        app: vault-agent-web
+      annotations:
+        # Enables the Vault Agent sidecar injection
+        vault.hashicorp.com/agent-inject: "true"
+        
+        # Tells Vault which K8s auth role to use (you must define "my-k8s-role" in Vault)
+        vault.hashicorp.com/role: "webapp"
+
+        # Instruct the sidecar to fetch the secret from Vault path "secret/webapp/config"
+        vault.hashicorp.com/agent-inject-secret-config: "secret/webapp/config"
+
+        # Template that extracts only the "password" key and writes it as a plain file
+        vault.hashicorp.com/agent-inject-template-config: |
+          {{- with secret "secret/webapp/config" -}}
+          password={{ .Data.data.password }}
+          {{- end }}
+    spec:
+      # Use the ServiceAccount that Vault trusts
+      serviceAccountName: vault
+
+      containers:
+      - name: webapp
+        image: python:3.9-slim
+
+        # Run our Flask app from the ConfigMap
+        command: ["/bin/sh"]
+        args:
+          - "-c"
+          - |
+            pip install flask && python /app/app.py
+        ports:
+          - containerPort: 8080
+
+        # Mount the ConfigMap with the Python app
+        volumeMounts:
+        - name: config
+          mountPath: /app
+
+      # The Vault sidecar will also run as part of this Pod, auto-injected by the webhook
+      volumes:
+      - name: config
+        configMap:
+          name: webapp-config
+          items:
+          - key: app.py
+            path: app.py
+
+

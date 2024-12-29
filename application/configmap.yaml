@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapp-config
+  namespace: default
+data:
+  app.py: |
+    from flask import Flask
+    import os
+    
+    app = Flask(__name__)
+
+    @app.route('/')
+    def index():
+        """
+        Reads the injected secret file (/vault/secrets/config)
+        and returns the content (which includes the 'password' key/value).
+        """
+        try:
+            with open('/vault/secrets/config', 'r') as f:
+                lines = f.readlines()
+                content = ''.join(lines)
+            return f"Secret file content:\n{content}\n", 200
+        except Exception as e:
+            return f"Error reading secret: {str(e)}\n", 500
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+
